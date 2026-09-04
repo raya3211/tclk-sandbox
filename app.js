@@ -52,6 +52,13 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+function randomDid() {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `did:key:z6Mk${hex}`;
+}
+
 function shortHex(s, n = 10) {
   if (!s) return "—";
   return s.length <= n * 2 ? s : `${s.slice(0, n)}…${s.slice(-4)}`;
@@ -106,6 +113,8 @@ function createOffer(form) {
     status: "open",
     hash: null,
     preimage: null,
+    payerDid: randomDid(),
+    payeeDid: null,
     frames: [{ type: "offer", at: t }],
   };
   deals.unshift(deal);
@@ -122,6 +131,7 @@ async function acceptDeal(id) {
   deal.status = "accepted";
   deal.hash = hash;
   deal.preimage = preimage;
+  deal.payeeDid = randomDid();
   deal.frames.push({ type: "accept", at: Date.now(), data: { statement: hash } });
   saveDeals();
   showToast("Accepted — secret minted, only the hash was published");
@@ -168,6 +178,14 @@ function cancelDeal(id) {
   render();
 }
 
+function removeDeal(id) {
+  deals = deals.filter((d) => d.id !== id);
+  if (selectedId === id) selectedId = deals[0]?.id ?? null;
+  saveDeals();
+  showToast("Deal closed and removed from the ledger");
+  render();
+}
+
 function copyTranscript(id) {
   const deal = deals.find((d) => d.id === id);
   if (!deal) return;
@@ -182,6 +200,7 @@ function render() {
   renderRing(now);
   renderLedger(now);
   renderDetail(now);
+  renderTranscript(now);
 }
 
 function renderRing(now) {
@@ -192,41 +211,67 @@ function renderRing(now) {
   document.getElementById("ring-fill").style.strokeDashoffset = String(circumference * (1 - frac));
 }
 
+// Signature of what actually needs a full row rebuild (not just the
+// live countdown text) — ids, order, selection and status. Rebuilding the
+// whole ledger every second (for the countdown) was replaying every row's
+// entrance animation, which is what read as "blinking".
+let ledgerSignature = "";
+
 function renderLedger(now) {
-  const ledger = document.getElementById("ledger");
   document.getElementById("ledger-count").textContent = `${deals.length} deal${deals.length === 1 ? "" : "s"}`;
+  const ledger = document.getElementById("ledger");
 
   if (deals.length === 0) {
+    ledgerSignature = "empty";
     ledger.innerHTML = `<div class="feed-empty">No deals yet. Post an offer to open the first room.</div>`;
     return;
   }
 
-  ledger.innerHTML = deals
-    .map((deal) => {
-      const status = dealStatus(deal, now);
-      const selected = deal.id === selectedId ? "selected" : "";
-      return `
-        <button class="deal-row ${selected}" data-id="${deal.id}">
-          <span class="pill ${pillClass(status)}"><span class="tick"></span>${STATUS_LABEL[status]}</span>
-          <span class="deal-row-main">
-            <div class="deal-row-desc">${escapeHtml(deal.description)}</div>
-            <div class="deal-row-sub">
-              <span>${escapeHtml(deal.amount)} ${escapeHtml(deal.asset)}</span>
-              <span>·</span>
-              <span>${rowLine(deal, now, status)}</span>
-            </div>
-          </span>
-          <span class="deal-row-chevron">›</span>
-        </button>`;
-    })
-    .join("");
+  const signature = deals.map((d) => `${d.id}:${dealStatus(d, now)}:${d.id === selectedId}`).join("|");
+  const structureChanged = signature !== ledgerSignature;
+  ledgerSignature = signature;
 
-  ledger.querySelectorAll(".deal-row").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      selectedId = btn.dataset.id;
-      render();
+  if (structureChanged) {
+    ledger.innerHTML = deals
+      .map((deal) => {
+        const status = dealStatus(deal, now);
+        const selected = deal.id === selectedId ? "selected" : "";
+        const closable = ["claimed", "refunded", "cancelled", "expired"].includes(status);
+        return `
+          <div class="deal-row ${selected}" data-id="${deal.id}">
+            <span class="pill ${pillClass(status)}"><span class="tick"></span>${STATUS_LABEL[status]}</span>
+            <button class="deal-row-main" data-select="${deal.id}" style="all:unset; display:block; width:100%; text-align:left; font:inherit; color:inherit; cursor:pointer; min-width:0;">
+              <div class="deal-row-desc">${escapeHtml(deal.description)}</div>
+              <div class="deal-row-sub">
+                <span>${escapeHtml(deal.amount)} ${escapeHtml(deal.asset)}</span>
+                <span>·</span>
+                <span class="deal-row-line" data-line="${deal.id}">${rowLine(deal, now, status)}</span>
+              </div>
+            </button>
+            ${closable ? `<button class="deal-row-close" data-close="${deal.id}" title="Close deal">×</button>` : `<span class="deal-row-chevron">›</span>`}
+          </div>`;
+      })
+      .join("");
+
+    ledger.querySelectorAll("[data-select]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        selectedId = btn.dataset.select;
+        render();
+      });
     });
-  });
+    ledger.querySelectorAll("[data-close]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeDeal(btn.dataset.close);
+      });
+    });
+  } else {
+    // same rows, same statuses — just refresh the countdown text in place
+    deals.forEach((deal) => {
+      const line = ledger.querySelector(`[data-line="${deal.id}"]`);
+      if (line) line.textContent = rowLine(deal, now, dealStatus(deal, now));
+    });
+  }
 }
 
 function tlStep({ icon, title, done, current, time, desc }) {
@@ -325,7 +370,9 @@ function renderDetail(now) {
         ${canRefund ? "Refund (as payer)" : `Refund opens in ${fmtRemaining(deal.refundAfterAt - now)}`}
       </button>`;
   } else {
-    actions = `<span class="detail-closed">✓ Deal closed.</span>`;
+    actions = `
+      <span class="detail-closed">✓ Deal closed.</span>
+      <button class="btn btn-danger" data-action="close">Close &amp; remove from ledger</button>`;
   }
   actions += `<button class="btn btn-ghost" data-action="copy">Copy transcript</button>`;
 
@@ -354,8 +401,64 @@ function renderDetail(now) {
       if (action === "refund") refundDeal(deal.id);
       if (action === "cancel") cancelDeal(deal.id);
       if (action === "copy") copyTranscript(deal.id);
+      if (action === "close") removeDeal(deal.id);
     });
   });
+}
+
+function txRow(time, id, role, text) {
+  return `
+    <div class="tx-row">
+      <span class="tx-time">${new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+      <span class="tx-id ${role}"><span class="tick"></span>${shortHex(id, 6)}</span>
+      <span class="tx-text">${text}</span>
+    </div>`;
+}
+
+function renderTranscript(now) {
+  const transcript = document.getElementById("transcript");
+  const deal = deals.find((d) => d.id === selectedId);
+
+  if (!deal) {
+    transcript.innerHTML = `<div class="feed-empty">Pilih deal dulu buat lihat contoh percakapan room-nya.</div>`;
+    return;
+  }
+
+  const lines = [];
+  for (const frame of deal.frames) {
+    if (frame.type === "offer") {
+      lines.push(
+        txRow(
+          frame.at,
+          deal.payerDid,
+          "payer",
+          `<span class="tx-cmd">tclk1 offer</span> amount=${escapeHtml(deal.amount)} asset=${escapeHtml(deal.asset)} lock=hash claimBy=${new Date(deal.claimByAt).toLocaleTimeString()} refundAfter=${new Date(deal.refundAfterAt).toLocaleTimeString()} expires=${new Date(deal.expiresAt).toLocaleTimeString()}`
+        )
+      );
+    } else if (frame.type === "accept") {
+      lines.push(txRow(frame.at, deal.payeeDid, "payee", `<span class="tx-cmd">tclk1 accept</span> statement=${shortHex(frame.data.statement, 10)}`));
+    } else if (frame.type === "lock") {
+      lines.push(txRow(frame.at, deal.payerDid, "payer", `<span class="tx-cmd">tclk1 lock</span> rail=PaperRail hash=${shortHex(deal.hash, 10)}`));
+    } else if (frame.type === "reveal") {
+      lines.push(txRow(frame.at, deal.payeeDid, "payee", `<span class="tx-cmd">tclk1 reveal</span> preimage=${shortHex(frame.data.preimage, 10)}`));
+    } else if (frame.type === "refund") {
+      lines.push(txRow(frame.at, deal.payerDid, "payer", `<span class="tx-cmd">tclk1 refund</span> hash=${shortHex(deal.hash, 10)}`));
+    } else if (frame.type === "cancel") {
+      const who = deal.payeeDid && deal.frames.some((f) => f.type === "accept") ? deal.payeeDid : deal.payerDid;
+      const role = who === deal.payeeDid ? "payee" : "payer";
+      lines.push(txRow(frame.at, who, role, `<span class="tx-cmd">tclk1 cancel</span>`));
+    }
+  }
+
+  if (deal.status === "open") {
+    lines.push(`<div class="feed-empty" style="padding:16px 0;">Menunggu payee accept…</div>`);
+  } else if (deal.status === "accepted") {
+    lines.push(`<div class="feed-empty" style="padding:16px 0;">Menunggu payer lock funds…</div>`);
+  } else if (deal.status === "locked") {
+    lines.push(`<div class="feed-empty" style="padding:16px 0;">Menunggu payee reveal, atau payer refund setelah window-nya kebuka…</div>`);
+  }
+
+  transcript.innerHTML = lines.join("");
 }
 
 // ---------- wiring ----------
