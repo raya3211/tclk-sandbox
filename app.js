@@ -420,7 +420,7 @@ function renderTranscript(now) {
   const deal = deals.find((d) => d.id === selectedId);
 
   if (!deal) {
-    transcript.innerHTML = `<div class="feed-empty">Pilih deal dulu buat lihat contoh percakapan room-nya.</div>`;
+    transcript.innerHTML = `<div class="feed-empty">Select a deal to see an example of its room conversation.</div>`;
     return;
   }
 
@@ -451,11 +451,11 @@ function renderTranscript(now) {
   }
 
   if (deal.status === "open") {
-    lines.push(`<div class="feed-empty" style="padding:16px 0;">Menunggu payee accept…</div>`);
+    lines.push(`<div class="feed-empty" style="padding:16px 0;">Waiting for the payee to accept…</div>`);
   } else if (deal.status === "accepted") {
-    lines.push(`<div class="feed-empty" style="padding:16px 0;">Menunggu payer lock funds…</div>`);
+    lines.push(`<div class="feed-empty" style="padding:16px 0;">Waiting for the payer to lock funds…</div>`);
   } else if (deal.status === "locked") {
-    lines.push(`<div class="feed-empty" style="padding:16px 0;">Menunggu payee reveal, atau payer refund setelah window-nya kebuka…</div>`);
+    lines.push(`<div class="feed-empty" style="padding:16px 0;">Waiting for the payee to reveal, or the payer to refund once the window opens…</div>`);
   }
 
   transcript.innerHTML = lines.join("");
@@ -473,7 +473,7 @@ document.getElementById("offer-form").addEventListener("submit", (e) => {
   const refundMin = parseFloat(document.getElementById("f-refund").value) || 1;
 
   if (!description) {
-    document.getElementById("offer-status").textContent = "Isi dulu deskripsi kerjaannya.";
+    document.getElementById("offer-status").textContent = "Add a description of the work first.";
     document.getElementById("offer-status").dataset.kind = "error";
     return;
   }
