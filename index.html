@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>tclk sandbox — deal marketplace</title>
+  <meta name="description" content="Rehearse hash-locked deals between two agents — offer, accept, lock, reveal, refund — modelled on the flop-labs/tclk protocol shape." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="scanlines"></div>
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="logo-mark">◍</span>
+      <div class="logo-text">
+        <span class="logo-title">TCLK SANDBOX</span>
+        <span class="logo-sub">hash-locked deal rehearsal · PaperRail</span>
+      </div>
+    </div>
+    <div class="ring-gauge" title="open offers right now">
+      <svg class="ring-svg" viewBox="0 0 44 44">
+        <circle class="ring-track" cx="22" cy="22" r="18"></circle>
+        <circle class="ring-fill" id="ring-fill" cx="22" cy="22" r="18"></circle>
+      </svg>
+      <div class="ring-label"><small>open</small><span id="ring-count">0</span></div>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar">
+      <section class="agent-panel">
+        <div class="agent-block">
+          <span class="agent-eyebrow">new offer</span>
+          <form id="offer-form" class="offer-form">
+            <label>What's the work
+              <input id="f-desc" type="text" value="Summarize 20 PDFs into one report" required />
+            </label>
+            <div class="offer-form-row">
+              <label>Amount
+                <input id="f-amount" type="text" inputmode="decimal" value="50" required />
+              </label>
+              <label>Asset
+                <input id="f-asset" type="text" value="FLOP" required />
+              </label>
+            </div>
+            <div class="offer-form-row offer-form-row-3">
+              <label>Expires (min)
+                <input id="f-expire" type="text" inputmode="decimal" value="5" required />
+              </label>
+              <label>Claim by (min)
+                <input id="f-claim" type="text" inputmode="decimal" value="10" required />
+              </label>
+              <label>Refund after (min)
+                <input id="f-refund" type="text" inputmode="decimal" value="15" required />
+              </label>
+            </div>
+            <p class="field-hint">Tip: coba angka kecil kayak 0.2 (12 detik) biar bisa lihat satu deal jalan penuh tanpa nunggu lama.</p>
+            <button class="btn btn-primary" type="submit">Post offer as payer</button>
+          </form>
+          <p class="agent-status" id="offer-status"></p>
+        </div>
+      </section>
+
+      <section class="agent-panel">
+        <div class="agent-block">
+          <span class="agent-eyebrow">about</span>
+          <p class="agent-copy-text">
+            Rehearses the <code>tclk/1</code> offer → accept → lock → reveal/refund flow, modelled on
+            <code>flop-labs/tclk</code>. Runs on a simulated PaperRail: it plays out the whole
+            lifecycle, it moves no real funds. Everything is local to your browser (saved to
+            <code>localStorage</code>) — no server, no network calls.
+          </p>
+        </div>
+      </section>
+    </aside>
+
+    <section class="feed-card">
+      <div class="feed-meta">
+        <span class="status-dot live"></span>
+        <span>Ledger</span>
+        <span class="meta-sep">·</span>
+        <span id="ledger-count">0 deals</span>
+      </div>
+      <div class="feed" id="ledger"></div>
+    </section>
+
+    <section class="feed-card" id="detail-card">
+      <div class="feed-meta">
+        <span>Deal detail</span>
+      </div>
+      <div class="feed" id="detail"></div>
+    </section>
+  </main>
+
+  <footer class="controls">
+    <span class="legend">
+      <span class="legend-item"><span class="dot dot-verified"></span> claimed</span>
+      <span class="legend-item"><span class="dot dot-human"></span> open</span>
+      <span class="legend-item"><span class="dot dot-progress"></span> accepted / locked</span>
+      <span class="legend-item"><span class="dot dot-danger"></span> refunded / cancelled</span>
+    </span>
+    <span class="footer-note">Unofficial fan-made sandbox for the tclk/1 protocol shape (Apache-2.0, flop-labs/tclk). Not affiliated with FLOP Labs.</span>
+  </footer>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
