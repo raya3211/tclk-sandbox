@@ -208,6 +208,7 @@ code {
   gap: 16px;
   min-height: 0;
   overflow-y: auto;
+  padding-right: 6px;
 }
 
 .detail-column {
@@ -920,13 +921,26 @@ code {
 
 /* ---------- scrollbar ---------- */
 
-.feed::-webkit-scrollbar { width: 8px; }
-.feed::-webkit-scrollbar-track { background: transparent; }
-.feed::-webkit-scrollbar-thumb {
+.feed::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar { width: 8px; }
+
+.feed::-webkit-scrollbar-track,
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+
+.feed::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 4px;
 }
-.feed::-webkit-scrollbar-thumb:hover { background: var(--text-dimmer); }
+
+.feed::-webkit-scrollbar-thumb:hover,
+.sidebar::-webkit-scrollbar-thumb:hover { background: var(--text-dimmer); }
+
+.feed,
+.sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
 
 /* ---------- toast ---------- */
 
