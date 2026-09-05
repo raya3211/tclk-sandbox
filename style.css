@@ -760,6 +760,33 @@ code {
   line-height: 1.5;
 }
 
+.accepted-row {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.accepted-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.accepted-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 9px;
+}
+
+.accepted-meta b { color: var(--text-dim); font-weight: 500; }
+
 /* status pill, shared between ledger and detail */
 
 .pill {

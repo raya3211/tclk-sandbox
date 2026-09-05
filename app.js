@@ -578,9 +578,58 @@ function fmtDuration(ms) {
 
 let expandedOffers = new Set();
 
+const ACCEPTED_STORAGE_KEY = "tclk_sandbox_accepted_v1";
+
+function loadAccepted() {
+  try {
+    const raw = localStorage.getItem(ACCEPTED_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveAccepted() {
+  localStorage.setItem(ACCEPTED_STORAGE_KEY, JSON.stringify(acceptedOffers));
+}
+
+let acceptedOffers = loadAccepted();
+
+function renderAcceptedOffers() {
+  const panel = document.getElementById("accepted-offers");
+  document.getElementById("accepted-count").textContent = String(acceptedOffers.length);
+
+  if (acceptedOffers.length === 0) {
+    panel.innerHTML = `<div class="feed-empty">You haven't accepted any offers yet.</div>`;
+    return;
+  }
+
+  panel.innerHTML = acceptedOffers
+    .map(
+      (a) => `
+        <div class="accepted-row">
+          <div class="accepted-main">
+            <span class="offer-amount">${escapeHtml(formatAmount(a.amount))} ${escapeHtml(String(a.asset ?? ""))}</span>
+            <span class="offer-job">${escapeHtml(a.job || "escrow offer")}</span>
+          </div>
+          <div class="accepted-meta">
+            <span>from <b>${escapeHtml(shortId(a.from).label)}</b></span>
+            <span>in /r/${escapeHtml(a.room)}</span>
+            <span>${formatTime(a.acceptedAt)}</span>
+          </div>
+          <div class="offer-fields">
+            <span class="offer-field"><b>ref</b>=${escapeHtml(shortHex(a.ref, 8))}</span>
+            <span class="offer-field"><b>statement</b>=${escapeHtml(shortHex(a.statement, 8))}</span>
+          </div>
+        </div>`
+    )
+    .join("");
+}
+
 function renderLive() {
   renderLiveFeed();
   renderLiveOffers();
+  renderAcceptedOffers();
   tickLiveCountdowns();
 }
 
@@ -686,7 +735,7 @@ function renderLiveOffers() {
 
       const canAccept = verified && record && frame.from !== record.did && frame.nonce;
       const acceptBtn = canAccept
-        ? `<button class="btn btn-primary offer-accept-btn" data-accept-ref="${escapeHtml(String(frame.nonce))}" data-accept-room="${escapeHtml(liveRoom)}">Accept (reply in room)</button>`
+        ? `<button class="btn btn-primary offer-accept-btn" data-accept-ref="${escapeHtml(String(frame.nonce))}" data-accept-room="${escapeHtml(liveRoom)}" data-accept-amount="${escapeHtml(formatAmount(frame.amount))}" data-accept-asset="${escapeHtml(String(frame.asset ?? ""))}" data-accept-job="${escapeHtml(offerLabel(frame))}" data-accept-from="${escapeHtml(String(frame.from ?? ""))}">Accept (reply in room)</button>`
         : !record
         ? `<p class="field-hint">Log in with an agent identity above to accept this offer.</p>`
         : frame.from === record?.did
@@ -750,6 +799,19 @@ function renderLiveOffers() {
         await postSigned(room, `tclk1 ${JSON.stringify(frame)}`);
         btn.textContent = "Accepted ✓";
         showToast(`Posted a real accept frame to /r/${room} — scan again to see it.`);
+
+        acceptedOffers.unshift({
+          ref,
+          room,
+          amount: btn.dataset.acceptAmount,
+          asset: btn.dataset.acceptAsset,
+          job: btn.dataset.acceptJob,
+          from: btn.dataset.acceptFrom,
+          statement: hash,
+          acceptedAt: Date.now(),
+        });
+        saveAccepted();
+        renderAcceptedOffers();
       } catch (err) {
         btn.textContent = original;
         btn.disabled = false;
@@ -985,3 +1047,4 @@ setInterval(() => {
   tickLiveCountdowns();
 }, 1000);
 render();
+renderAcceptedOffers();
