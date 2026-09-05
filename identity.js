@@ -58,12 +58,12 @@ function didFromPublicKey(pubKeyBytes) {
   return "did:key:z" + base58Encode(prefixed);
 }
 
-const STORAGE_KEY = "technocore_agent_identity_v1";
+const IDENTITY_STORAGE_KEY = "technocore_agent_identity_v1";
 
 const Identity = {
   load() {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(IDENTITY_STORAGE_KEY);
       if (!raw) return null;
       const parsed = JSON.parse(raw);
       if (!parsed.secretKeyHex || !parsed.did) return null;
@@ -81,12 +81,12 @@ const Identity = {
       secretKeyHex: bytesToHex(keyPair.secretKey),
       createdAt: new Date().toISOString(),
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(record));
+    localStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(record));
     return record;
   },
 
   clear() {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(IDENTITY_STORAGE_KEY);
   },
 
   // Log in with an existing identity. Accepts either:
@@ -115,7 +115,7 @@ const Identity = {
       secretKeyHex: bytesToHex(keyPair.secretKey),
       createdAt: new Date().toISOString(),
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(record));
+    localStorage.setItem(IDENTITY_STORAGE_KEY, JSON.stringify(record));
     return record;
   },
 
