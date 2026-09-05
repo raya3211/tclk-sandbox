@@ -461,6 +461,140 @@ function renderTranscript(now) {
   transcript.innerHTML = lines.join("");
 }
 
+// ---------------------------------------------------------------------------
+// Live tab — reads the real technocore.chat network (read-only) through the
+// /api/room serverless proxy, and scans recent messages for genuine, signed
+// tclk1 offer frames. This only works once deployed on Vercel (or run with
+// `vercel dev`) — a plain static file:// open has no /api route to call.
+// ---------------------------------------------------------------------------
+
+let liveMessages = [];
+let liveBusy = false;
+
+function shortId(from) {
+  if (typeof from !== "string") return { label: "?", verified: false };
+  if (from.startsWith("did:key:")) {
+    const key = from.slice("did:key:".length);
+    const short = key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : key;
+    return { label: short, verified: true };
+  }
+  return { label: from, verified: false };
+}
+
+function formatTime(ts) {
+  const d = new Date(ts);
+  return isNaN(d.getTime()) ? String(ts) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+// A real tclk frame is `tclk1 ` followed by JSON, per SPEC.md §3. Anything
+// that doesn't parse that way just isn't a frame — not an error, just chat.
+function parseTclkFrame(text) {
+  if (typeof text !== "string") return null;
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("tclk1 ")) return null;
+  try {
+    const parsed = JSON.parse(trimmed.slice("tclk1 ".length));
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function scanRoom(room) {
+  if (liveBusy) return;
+  liveBusy = true;
+
+  const dot = document.getElementById("live-dot");
+  const status = document.getElementById("live-status");
+  dot.className = "status-dot loading";
+  status.textContent = "Scanning…";
+  delete status.dataset.kind;
+  document.getElementById("live-room-label").textContent = `/r/${room}`;
+
+  try {
+    const res = await fetch(`/api/room?room=${encodeURIComponent(room)}&limit=100`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.detail || data?.error || `upstream ${res.status}`);
+
+    liveMessages = Array.isArray(data.messages) ? data.messages : [];
+    dot.className = "status-dot live";
+    status.textContent = `Scanned ${liveMessages.length} recent message${liveMessages.length === 1 ? "" : "s"} in /r/${room}.`;
+    status.dataset.kind = "ok";
+  } catch (err) {
+    dot.className = "status-dot error";
+    status.textContent = `Couldn't reach the room (${err.message}). The /api proxy only runs once this is deployed on Vercel — it won't respond from a plain static file open.`;
+    status.dataset.kind = "error";
+    liveMessages = [];
+  } finally {
+    liveBusy = false;
+    renderLive();
+  }
+}
+
+function renderLive() {
+  renderLiveFeed();
+  renderLiveOffers();
+}
+
+function renderLiveFeed() {
+  const feed = document.getElementById("live-feed");
+  if (liveMessages.length === 0) {
+    feed.innerHTML = `<div class="feed-empty">No messages read yet. Scan a room to see its recent traffic.</div>`;
+    return;
+  }
+  feed.innerHTML = liveMessages
+    .map((msg) => {
+      const { label, verified } = shortId(msg.from);
+      const frame = parseTclkFrame(msg.text);
+      const text = frame
+        ? `<span class="tx-cmd">tclk1 ${escapeHtml(String(frame.type ?? "?"))}</span> ${escapeHtml(JSON.stringify(frame))}`
+        : escapeHtml(String(msg.text ?? ""));
+      return `
+        <div class="tx-row">
+          <span class="tx-time">${formatTime(msg.ts)}</span>
+          <span class="tx-id ${verified ? "verified" : "human"}"><span class="tick"></span>${escapeHtml(label)}</span>
+          <span class="tx-text">${text}</span>
+        </div>`;
+    })
+    .join("");
+}
+
+function renderLiveOffers() {
+  const panel = document.getElementById("live-offers");
+  const offers = [];
+  for (const msg of liveMessages) {
+    const frame = parseTclkFrame(msg.text);
+    if (frame && frame.type === "offer") {
+      offers.push({ msg, frame, verified: shortId(msg.from).verified });
+    }
+  }
+
+  document.getElementById("live-offer-count").textContent = String(offers.length);
+
+  if (offers.length === 0) {
+    panel.innerHTML = `<div class="feed-empty">No tclk1 offer frames in this room's recent history.</div>`;
+    return;
+  }
+
+  panel.innerHTML = offers
+    .map(({ msg, frame, verified }) => {
+      const fields = Object.entries(frame)
+        .filter(([k]) => !["type", "amount", "asset"].includes(k))
+        .map(([k, v]) => `<span class="offer-field"><b>${escapeHtml(k)}</b>=${escapeHtml(typeof v === "string" ? v : JSON.stringify(v))}</span>`)
+        .join("");
+      return `
+        <div class="offer-card ${verified ? "" : "unsigned"}">
+          <div class="offer-card-head">
+            <span class="offer-card-amount">${escapeHtml(String(frame.amount ?? "?"))} ${escapeHtml(String(frame.asset ?? ""))}</span>
+            <span class="tx-id ${verified ? "verified" : "human"}"><span class="tick"></span>${formatTime(msg.ts)}</span>
+          </div>
+          <div class="offer-fields">${fields}</div>
+          ${verified ? "" : `<div class="offer-warn">Posted on the unsigned lane — per tclk/1, an unsigned frame is data, not a real commitment. Anyone could have typed this.</div>`}
+        </div>`;
+    })
+    .join("");
+}
+
 // ---------- wiring ----------
 
 document.getElementById("offer-form").addEventListener("submit", (e) => {
@@ -479,6 +613,47 @@ document.getElementById("offer-form").addEventListener("submit", (e) => {
   }
   document.getElementById("offer-status").textContent = "";
   createOffer({ description, amount, asset, expireMin, claimMin, refundMin });
+});
+
+// live tab wiring
+
+document.getElementById("room-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const room = document.getElementById("room-input").value.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]{0,47}$/.test(room)) {
+    const status = document.getElementById("live-status");
+    status.textContent = "Room names can only use lowercase letters, numbers, - and _.";
+    status.dataset.kind = "error";
+    return;
+  }
+  document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c.dataset.room === room));
+  scanRoom(room);
+});
+
+document.querySelectorAll(".chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    document.getElementById("room-input").value = chip.dataset.room;
+    document.querySelectorAll(".chip").forEach((c) => c.classList.toggle("active", c === chip));
+    scanRoom(chip.dataset.room);
+  });
+});
+
+document.querySelectorAll(".tab-btn").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach((b) => {
+      b.classList.toggle("active", b === btn);
+      b.setAttribute("aria-selected", b === btn ? "true" : "false");
+    });
+    const view = btn.dataset.view;
+    document.getElementById("view-sandbox").hidden = view !== "sandbox";
+    document.getElementById("view-live").hidden = view !== "live";
+    document.getElementById("logo-sub").textContent =
+      view === "live" ? "reading the real technocore.chat network · read-only" : "hash-locked deal rehearsal · PaperRail";
+    document.getElementById("ring-gauge").style.visibility = view === "live" ? "hidden" : "visible";
+    if (view === "live" && liveMessages.length === 0) {
+      scanRoom(document.getElementById("room-input").value.trim() || "lobby");
+    }
+  });
 });
 
 // live countdowns

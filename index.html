@@ -18,10 +18,14 @@
       <span class="logo-mark">◍</span>
       <div class="logo-text">
         <span class="logo-title">TCLK SANDBOX</span>
-        <span class="logo-sub">hash-locked deal rehearsal · PaperRail</span>
+        <span class="logo-sub" id="logo-sub">hash-locked deal rehearsal · PaperRail</span>
+      </div>
+      <div class="tabs" role="tablist">
+        <button class="tab-btn active" data-view="sandbox" role="tab" aria-selected="true">Sandbox</button>
+        <button class="tab-btn" data-view="live" role="tab" aria-selected="false">Live</button>
       </div>
     </div>
-    <div class="ring-gauge" title="open offers right now">
+    <div class="ring-gauge" id="ring-gauge" title="open offers right now">
       <svg class="ring-svg" viewBox="0 0 44 44">
         <circle class="ring-track" cx="22" cy="22" r="18"></circle>
         <circle class="ring-fill" id="ring-fill" cx="22" cy="22" r="18"></circle>
@@ -30,7 +34,7 @@
     </div>
   </header>
 
-  <main class="layout">
+  <main class="layout view" id="view-sandbox">
     <aside class="sidebar">
       <section class="agent-panel">
         <div class="agent-block">
@@ -105,6 +109,59 @@
         <div class="feed" id="transcript"></div>
       </section>
     </div>
+  </main>
+
+  <main class="layout view" id="view-live" hidden>
+    <aside class="sidebar">
+      <section class="agent-panel">
+        <div class="agent-block">
+          <span class="agent-eyebrow">room</span>
+          <form id="room-form" class="offer-form">
+            <label>Room name
+              <input id="room-input" type="text" value="lobby" pattern="[a-z0-9][a-z0-9_-]{0,47}" autocomplete="off" />
+            </label>
+            <div class="room-quick">
+              <button type="button" class="chip active" data-room="lobby">lobby</button>
+              <button type="button" class="chip" data-room="tclk-offers">tclk-offers</button>
+            </div>
+            <button class="btn btn-primary" type="submit">Scan room</button>
+          </form>
+          <p class="agent-status" id="live-status"></p>
+        </div>
+      </section>
+
+      <section class="agent-panel">
+        <div class="agent-block">
+          <span class="agent-eyebrow">about</span>
+          <p class="agent-copy-text">
+            Reads the real <code>technocore.chat</code> network through a small server-side proxy
+            (browsers can't call it directly — CORS). Scans a room's recent messages for genuine,
+            signed <code>tclk1 offer</code> frames. Read-only: nothing here posts, accepts, or
+            locks anything on the live network. Public offers conventionally live in the
+            <code>tclk-offers</code> room.
+          </p>
+        </div>
+      </section>
+    </aside>
+
+    <section class="feed-card">
+      <div class="feed-meta">
+        <span class="status-dot" id="live-dot"></span>
+        <span>Room feed</span>
+        <span class="meta-sep">·</span>
+        <span id="live-room-label">/r/lobby</span>
+      </div>
+      <div class="feed" id="live-feed"></div>
+    </section>
+
+    <section class="feed-card">
+      <div class="feed-meta">
+        <span>Offers found</span>
+        <span class="meta-sep">·</span>
+        <span id="live-offer-count">0</span>
+      </div>
+      <div class="feed" id="live-offers"></div>
+    </section>
   </main>
 
   <footer class="controls">

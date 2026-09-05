@@ -113,6 +113,35 @@ code {
   letter-spacing: 0.03em;
 }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: 10px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--void);
+}
+
+.tab-btn {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.tab-btn:hover { color: var(--text); }
+
+.tab-btn.active {
+  background: var(--panel-2);
+  color: var(--verified);
+  box-shadow: inset 0 0 0 1px var(--verified-dim);
+}
+
 /* ring gauge — reflects how many deals are currently open */
 
 .ring-gauge {
@@ -168,6 +197,8 @@ code {
   padding: 20px 24px;
   align-items: stretch;
 }
+
+.layout[hidden] { display: none; }
 
 .sidebar {
   width: 300px;
@@ -275,6 +306,26 @@ code {
   line-height: 1.4;
 }
 
+.room-quick {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--void);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.chip:hover { color: var(--verified); border-color: var(--verified-dim); }
+.chip.active { color: var(--verified); border-color: var(--verified-dim); background: rgba(79, 209, 197, 0.06); }
+
 .btn {
   font-family: var(--font-mono);
   font-size: 12.5px;
@@ -368,6 +419,16 @@ code {
   background: var(--verified);
   box-shadow: 0 0 8px rgba(79, 209, 197, 0.8);
   animation: pulse 1.8s ease-in-out infinite;
+}
+
+.status-dot.error {
+  background: var(--danger);
+  box-shadow: 0 0 8px rgba(232, 93, 117, 0.7);
+}
+
+.status-dot.loading {
+  background: var(--human);
+  animation: pulse 1s ease-in-out infinite;
 }
 
 @keyframes pulse {
@@ -491,6 +552,8 @@ code {
 
 .tx-id.payer { color: var(--human); border-color: var(--human-dim); background: rgba(242, 166, 90, 0.06); }
 .tx-id.payee { color: var(--verified); border-color: var(--verified-dim); background: rgba(79, 209, 197, 0.06); }
+.tx-id.human { color: var(--human); border-color: var(--human-dim); background: rgba(242, 166, 90, 0.06); }
+.tx-id.verified { color: var(--verified); border-color: var(--verified-dim); background: rgba(79, 209, 197, 0.06); }
 
 .tx-text {
   color: var(--text);
@@ -500,6 +563,57 @@ code {
 }
 
 .tx-text .tx-cmd { color: var(--progress); }
+
+/* ---------- live offers ---------- */
+
+.offer-card {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.offer-card.unsigned { border-color: var(--danger-dim); }
+
+.offer-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.offer-card-amount {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.offer-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.offer-field {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--void);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.offer-field b { color: var(--text); font-weight: 500; }
+
+.offer-warn {
+  margin-top: 9px;
+  font-size: 11px;
+  color: var(--danger);
+  line-height: 1.5;
+}
 
 /* status pill, shared between ledger and detail */
 
