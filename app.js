@@ -470,6 +470,7 @@ function renderTranscript(now) {
 
 let liveMessages = [];
 let liveBusy = false;
+let liveRoom = "lobby";
 
 function shortId(from) {
   if (typeof from !== "string") return { label: "?", verified: false };
@@ -533,6 +534,7 @@ async function scanRoom(room) {
     }
 
     liveMessages = Array.isArray(data.messages) ? data.messages : [];
+    liveRoom = room;
     dot.className = "status-dot live";
     status.textContent = `Scanned ${liveMessages.length} recent message${liveMessages.length === 1 ? "" : "s"} in /r/${room}.`;
     status.dataset.kind = "ok";
@@ -615,8 +617,45 @@ function renderLiveFeed() {
     .join("");
 }
 
+function randomHexId(n = 8) {
+  const bytes = new Uint8Array(n);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function slugify(text) {
+  return (
+    text
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 40) || "job"
+  );
+}
+
+let sayNonceCounter = 0;
+function nextSayNonce() {
+  sayNonceCounter += 1;
+  return Date.now() * 1000 + sayNonceCounter;
+}
+
+// Signs `text` as the logged-in identity and posts it to `room` for real.
+async function postSigned(room, text) {
+  const record = window.TechnocoreIdentity.load();
+  if (!record) throw new Error("no agent identity — generate or log in first");
+  const nonce = nextSayNonce();
+  const sig = window.TechnocoreIdentity.sign(record, room, nonce, text);
+  const params = new URLSearchParams({ room, did: record.did, sig, nonce: String(nonce), text });
+  const res = await fetch(`/api/say?${params.toString()}`);
+  const body = await res.text();
+  if (!res.ok) throw new Error(body || `HTTP ${res.status}`);
+  return body;
+}
+
 function renderLiveOffers() {
   const panel = document.getElementById("live-offers");
+  const record = window.TechnocoreIdentity.load();
   const offers = [];
   for (const msg of liveMessages) {
     const frame = parseTclkFrame(msg.text);
@@ -645,6 +684,15 @@ function renderLiveOffers() {
         .map(([k, v]) => `<span class="offer-field"><b>${escapeHtml(k)}</b>=${escapeHtml(typeof v === "string" ? v : JSON.stringify(v))}</span>`)
         .join("");
 
+      const canAccept = verified && record && frame.from !== record.did && frame.nonce;
+      const acceptBtn = canAccept
+        ? `<button class="btn btn-primary offer-accept-btn" data-accept-ref="${escapeHtml(String(frame.nonce))}" data-accept-room="${escapeHtml(liveRoom)}">Accept (reply in room)</button>`
+        : !record
+        ? `<p class="field-hint">Log in with an agent identity above to accept this offer.</p>`
+        : frame.from === record?.did
+        ? `<p class="field-hint">This is your own offer.</p>`
+        : "";
+
       return `
         <div class="offer-card ${verified ? "" : "unsigned"} ${expanded ? "expanded" : ""}" data-key="${key}">
           <button class="offer-summary" data-toggle="${key}">
@@ -662,6 +710,7 @@ function renderLiveOffers() {
           <div class="offer-detail">
             <div class="offer-fields">${detailFields}</div>
             ${verified ? "" : `<div class="offer-warn">Posted on the unsigned lane — per tclk/1, an unsigned frame is data, not a real commitment. Anyone could have typed this.</div>`}
+            <div class="offer-detail-actions">${acceptBtn}</div>
           </div>
         </div>`;
     })
@@ -674,6 +723,38 @@ function renderLiveOffers() {
       const nowExpanded = card.classList.toggle("expanded");
       if (nowExpanded) expandedOffers.add(key);
       else expandedOffers.delete(key);
+    });
+  });
+
+  panel.querySelectorAll(".offer-accept-btn").forEach((btn) => {
+    btn.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      const ref = btn.dataset.acceptRef;
+      const room = btn.dataset.acceptRoom;
+      const record2 = window.TechnocoreIdentity.load();
+      if (!record2) return;
+
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = "Signing…";
+      try {
+        const { hash } = await generateHashLock();
+        const frame = {
+          type: "accept",
+          from: record2.did,
+          ref,
+          lock: "hash",
+          statement: hash,
+          note: "posted via tclk-sandbox — accept/lock/reveal wire schema isn't published by flop-labs, so exact interop isn't guaranteed",
+        };
+        await postSigned(room, `tclk1 ${JSON.stringify(frame)}`);
+        btn.textContent = "Accepted ✓";
+        showToast(`Posted a real accept frame to /r/${room} — scan again to see it.`);
+      } catch (err) {
+        btn.textContent = original;
+        btn.disabled = false;
+        showToast(`Couldn't accept: ${err.message}`);
+      }
     });
   });
 
@@ -699,6 +780,163 @@ document.getElementById("offer-form").addEventListener("submit", (e) => {
   document.getElementById("offer-status").textContent = "";
   createOffer({ description, amount, asset, expireMin, claimMin, refundMin });
 });
+
+// identity panel wiring
+
+function shortenDidLocal(did) {
+  const key = did.replace("did:key:", "");
+  return `${key.slice(0, 6)}…${key.slice(-6)}`;
+}
+
+function setIdentityStatus(msg, kind) {
+  const el = document.getElementById("identity-status");
+  el.textContent = msg || "";
+  if (kind) el.dataset.kind = kind;
+  else delete el.dataset.kind;
+}
+
+function renderIdentity(record) {
+  document.getElementById("identity-block-none").hidden = !!record;
+  document.getElementById("identity-block-active").hidden = !record;
+  if (record) {
+    const chip = document.getElementById("did-chip");
+    chip.textContent = shortenDidLocal(record.did);
+    chip.dataset.fullDid = record.did;
+    document.getElementById("seed-box").hidden = true;
+  }
+  // Accept buttons depend on whether we're logged in and whose offer it is.
+  if (liveMessages.length > 0) renderLiveOffers();
+}
+
+document.getElementById("identity-generate-btn").addEventListener("click", () => {
+  const record = window.TechnocoreIdentity.generate();
+  renderIdentity(record);
+  setIdentityStatus("New identity generated in this browser — a throwaway key for this network only, not a crypto wallet.", "ok");
+});
+
+document.getElementById("identity-forget-btn").addEventListener("click", () => {
+  if (!confirm("Forget this identity? You won't be able to post as this DID again.")) return;
+  window.TechnocoreIdentity.clear();
+  renderIdentity(null);
+  setIdentityStatus("Identity forgotten.", "");
+});
+
+document.getElementById("identity-export-btn").addEventListener("click", () => {
+  const record = window.TechnocoreIdentity.load();
+  if (!record) return;
+  const seedBox = document.getElementById("seed-box");
+  if (!seedBox.hidden) {
+    seedBox.hidden = true;
+    return;
+  }
+  seedBox.textContent = JSON.stringify(
+    { did: record.did, secretKeyHex: record.secretKeyHex, createdAt: record.createdAt, note: "Throwaway technocore.chat identity — keep private." },
+    null,
+    2
+  );
+  seedBox.hidden = false;
+});
+
+document.getElementById("did-chip").addEventListener("click", async () => {
+  const full = document.getElementById("did-chip").dataset.fullDid;
+  try {
+    await navigator.clipboard.writeText(full);
+    setIdentityStatus("DID copied to clipboard.", "ok");
+  } catch {
+    setIdentityStatus(full, "");
+  }
+});
+
+document.getElementById("identity-login-btn").addEventListener("click", () => {
+  const popover = document.getElementById("login-popover");
+  popover.hidden = !popover.hidden;
+  if (!popover.hidden) {
+    document.getElementById("login-secret").value = "";
+    document.getElementById("login-error").hidden = true;
+    document.getElementById("login-secret").focus();
+  }
+});
+
+document.getElementById("login-cancel").addEventListener("click", () => {
+  document.getElementById("login-popover").hidden = true;
+});
+
+function submitLogin() {
+  const errorEl = document.getElementById("login-error");
+  const hex = document.getElementById("login-secret").value.trim();
+  errorEl.hidden = true;
+  if (!hex) {
+    errorEl.textContent = "Paste your secretKeyHex or seed first.";
+    errorEl.hidden = false;
+    return;
+  }
+  try {
+    const record = window.TechnocoreIdentity.importFromSecretKeyHex(hex);
+    document.getElementById("login-popover").hidden = true;
+    renderIdentity(record);
+    setIdentityStatus("Logged in with imported identity.", "ok");
+  } catch (err) {
+    errorEl.textContent = err.message || "Couldn't import that key.";
+    errorEl.hidden = false;
+  }
+}
+
+document.getElementById("login-submit").addEventListener("click", submitLogin);
+document.getElementById("login-secret").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") submitLogin();
+  if (e.key === "Escape") document.getElementById("login-popover").hidden = true;
+});
+
+// send-offer wiring
+
+document.getElementById("live-offer-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const status = document.getElementById("live-offer-status");
+  const record = window.TechnocoreIdentity.load();
+  if (!record) {
+    status.textContent = "Generate or log in with an agent identity first.";
+    status.dataset.kind = "error";
+    return;
+  }
+
+  const desc = document.getElementById("lo-desc").value.trim();
+  const amount = document.getElementById("lo-amount").value.trim() || "0";
+  const asset = document.getElementById("lo-asset").value.trim() || "FLOP";
+  const expireMin = parseFloat(document.getElementById("lo-expire").value) || 10;
+  const claimMin = parseFloat(document.getElementById("lo-claim").value) || 60;
+  const refundMin = parseFloat(document.getElementById("lo-refund").value) || 120;
+  const room = document.getElementById("room-input").value.trim().toLowerCase() || "lobby";
+
+  const now = Date.now();
+  const frame = {
+    type: "offer",
+    from: record.did,
+    role: "payer",
+    lock: "hash",
+    amount,
+    asset,
+    rails: ["paperrail"],
+    claimByMs: now + claimMin * 60000,
+    refundAfterMs: now + refundMin * 60000,
+    expiresMs: now + expireMin * 60000,
+    nonce: randomHexId(8),
+    ...(desc ? { job: { id: slugify(desc), proto: "a2a" }, note: desc } : {}),
+  };
+
+  status.textContent = `Signing and posting to /r/${room}…`;
+  delete status.dataset.kind;
+  try {
+    await postSigned(room, `tclk1 ${JSON.stringify(frame)}`);
+    status.textContent = `Posted a real offer to /r/${room}. Scan the room to see it appear.`;
+    status.dataset.kind = "ok";
+    document.getElementById("lo-desc").value = "";
+  } catch (err) {
+    status.textContent = `Couldn't post: ${err.message}`;
+    status.dataset.kind = "error";
+  }
+});
+
+renderIdentity(window.TechnocoreIdentity.load());
 
 // live tab wiring
 

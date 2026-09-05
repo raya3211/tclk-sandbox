@@ -241,6 +241,8 @@ code {
   gap: 12px;
 }
 
+.agent-block[hidden] { display: none; }
+
 .agent-eyebrow {
   font-size: 10px;
   text-transform: uppercase;
@@ -378,6 +380,80 @@ code {
 
 .agent-status[data-kind="ok"] { color: var(--verified); }
 .agent-status[data-kind="error"] { color: var(--danger); }
+
+.did-chip {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--verified);
+  background: rgba(79, 209, 197, 0.08);
+  border: 1px solid var(--verified-dim);
+  border-radius: 6px;
+  padding: 7px 10px;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.did-chip:hover { filter: brightness(1.15); }
+
+.seed-box {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+  background: var(--void);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  max-height: 160px;
+  overflow-y: auto;
+}
+
+.login-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--void);
+}
+
+.login-popover[hidden] { display: none; }
+
+.login-popover label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.login-popover input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  outline: none;
+}
+
+.field-error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.offer-detail-actions {
+  margin-top: 10px;
+}
+
+.offer-detail-actions .field-hint { margin: 0; }
 
 /* ---------- feed cards (ledger + detail) ---------- */
 
