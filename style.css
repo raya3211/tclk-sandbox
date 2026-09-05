@@ -570,30 +570,98 @@ code {
   border: 1px solid var(--border);
   background: var(--panel-2);
   border-radius: 8px;
-  padding: 12px 14px;
   margin-bottom: 10px;
+  overflow: hidden;
 }
 
 .offer-card.unsigned { border-color: var(--danger-dim); }
 
-.offer-card-head {
-  display: flex;
+.offer-summary {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 9px;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-mono);
+  color: var(--text);
 }
 
-.offer-card-amount {
-  font-size: 13.5px;
+.offer-summary:hover { background: rgba(255, 255, 255, 0.02); }
+
+.offer-chevron {
+  color: var(--text-dimmer);
+  font-size: 13px;
+  transition: transform 0.15s ease;
+}
+
+.offer-card.expanded .offer-chevron { transform: rotate(90deg); color: var(--verified); }
+
+.offer-summary-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.offer-amount {
+  font-size: 14px;
   font-weight: 600;
   color: var(--text);
 }
+
+.offer-unsigned-tag {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--danger);
+  border: 1px solid var(--danger-dim);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.offer-job {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.offer-summary-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.offer-from b { color: var(--text-dim); font-weight: 500; }
+
+.offer-countdown { color: var(--human); }
+.offer-countdown.expired { color: var(--text-dimmer); }
+
+.offer-detail {
+  display: none;
+  padding: 0 14px 14px;
+}
+
+.offer-card.expanded .offer-detail { display: block; }
 
 .offer-fields {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-soft);
 }
 
 .offer-field {

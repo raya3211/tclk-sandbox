@@ -510,6 +510,7 @@ async function scanRoom(room) {
   status.textContent = "Scanning…";
   delete status.dataset.kind;
   document.getElementById("live-room-label").textContent = `/r/${room}`;
+  expandedOffers.clear();
 
   try {
     const res = await fetch(`/api/room?room=${encodeURIComponent(room)}&limit=100`);
@@ -546,9 +547,49 @@ async function scanRoom(room) {
   }
 }
 
+function formatAmount(v) {
+  if (v === undefined || v === null || v === "") return "?";
+  const s = String(v).trim();
+  if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s).toLocaleString();
+  return s;
+}
+
+function offerLabel(frame) {
+  if (frame.job) {
+    if (typeof frame.job === "object" && frame.job !== null && frame.job.id) return String(frame.job.id);
+    if (typeof frame.job === "string") return frame.job;
+  }
+  if (frame.ref) return `ref ${shortHex(String(frame.ref), 6)}`;
+  return "escrow offer";
+}
+
+function fmtDuration(ms) {
+  if (ms <= 0) return "expired";
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+let expandedOffers = new Set();
+
 function renderLive() {
   renderLiveFeed();
   renderLiveOffers();
+  tickLiveCountdowns();
+}
+
+function tickLiveCountdowns() {
+  const now = Date.now();
+  document.querySelectorAll(".offer-countdown[data-expires]").forEach((el) => {
+    const expiresMs = Number(el.dataset.expires);
+    const msLeft = expiresMs - now;
+    el.textContent = msLeft <= 0 ? "Expired" : `Expires in ${fmtDuration(msLeft)}`;
+    el.classList.toggle("expired", msLeft <= 0);
+  });
 }
 
 function renderLiveFeed() {
@@ -592,22 +633,51 @@ function renderLiveOffers() {
   }
 
   panel.innerHTML = offers
-    .map(({ msg, frame, verified }) => {
-      const fields = Object.entries(frame)
+    .map(({ msg, frame, verified }, i) => {
+      const key = String(msg.seq ?? `${msg.ts}-${i}`);
+      const expanded = expandedOffers.has(key);
+      const { label } = shortId(msg.from);
+      const expiresMs = Number(frame.expiresMs);
+      const hasExpiry = Number.isFinite(expiresMs);
+
+      const detailFields = Object.entries(frame)
         .filter(([k]) => !["type", "amount", "asset"].includes(k))
         .map(([k, v]) => `<span class="offer-field"><b>${escapeHtml(k)}</b>=${escapeHtml(typeof v === "string" ? v : JSON.stringify(v))}</span>`)
         .join("");
+
       return `
-        <div class="offer-card ${verified ? "" : "unsigned"}">
-          <div class="offer-card-head">
-            <span class="offer-card-amount">${escapeHtml(String(frame.amount ?? "?"))} ${escapeHtml(String(frame.asset ?? ""))}</span>
-            <span class="tx-id ${verified ? "verified" : "human"}"><span class="tick"></span>${formatTime(msg.ts)}</span>
+        <div class="offer-card ${verified ? "" : "unsigned"} ${expanded ? "expanded" : ""}" data-key="${key}">
+          <button class="offer-summary" data-toggle="${key}">
+            <span class="offer-chevron">›</span>
+            <span class="offer-summary-main">
+              <span class="offer-amount">${escapeHtml(formatAmount(frame.amount))} ${escapeHtml(String(frame.asset ?? ""))}${verified ? "" : ` <span class="offer-unsigned-tag">unsigned</span>`}</span>
+              <span class="offer-job">${escapeHtml(offerLabel(frame))}</span>
+            </span>
+            <span class="offer-summary-meta">
+              <span class="offer-from">from <b>${escapeHtml(label)}</b></span>
+              <span class="offer-time">${formatTime(msg.ts)}</span>
+              ${hasExpiry ? `<span class="offer-countdown" data-expires="${expiresMs}">Expires in …</span>` : ""}
+            </span>
+          </button>
+          <div class="offer-detail">
+            <div class="offer-fields">${detailFields}</div>
+            ${verified ? "" : `<div class="offer-warn">Posted on the unsigned lane — per tclk/1, an unsigned frame is data, not a real commitment. Anyone could have typed this.</div>`}
           </div>
-          <div class="offer-fields">${fields}</div>
-          ${verified ? "" : `<div class="offer-warn">Posted on the unsigned lane — per tclk/1, an unsigned frame is data, not a real commitment. Anyone could have typed this.</div>`}
         </div>`;
     })
     .join("");
+
+  panel.querySelectorAll("[data-toggle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.toggle;
+      const card = panel.querySelector(`.offer-card[data-key="${CSS.escape(key)}"]`);
+      const nowExpanded = card.classList.toggle("expanded");
+      if (nowExpanded) expandedOffers.add(key);
+      else expandedOffers.delete(key);
+    });
+  });
+
+  tickLiveCountdowns();
 }
 
 // ---------- wiring ----------
@@ -671,6 +741,9 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
   });
 });
 
-// live countdowns
-setInterval(render, 1000);
+// live countdowns (sandbox deals + live-tab offer expiries)
+setInterval(() => {
+  render();
+  tickLiveCountdowns();
+}, 1000);
 render();
