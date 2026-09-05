@@ -26,7 +26,13 @@ export default async function handler(req, res) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10000);
 
-    const upstream = await fetch(upstreamUrl, { signal: controller.signal });
+    const upstream = await fetch(upstreamUrl, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": "tclk-sandbox/1.0 (+https://github.com/flop-labs/technocore-chat)",
+        Accept: "application/json, text/plain;q=0.9, */*;q=0.5",
+      },
+    });
     clearTimeout(timeout);
 
     const body = await upstream.text();

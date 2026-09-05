@@ -513,8 +513,23 @@ async function scanRoom(room) {
 
   try {
     const res = await fetch(`/api/room?room=${encodeURIComponent(room)}&limit=100`);
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.detail || data?.error || `upstream ${res.status}`);
+    const raw = await res.text();
+
+    let data = null;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      // Upstream (or something in front of it) sent back something that
+      // isn't JSON at all — a plain-text error page, an HTML page, etc.
+    }
+
+    if (!res.ok) {
+      const detail = data?.detail || data?.error || raw.trim().slice(0, 160) || `HTTP ${res.status}`;
+      throw new Error(`${res.status} — ${detail}`);
+    }
+    if (!data) {
+      throw new Error(`got a non-JSON reply: "${raw.trim().slice(0, 160)}"`);
+    }
 
     liveMessages = Array.isArray(data.messages) ? data.messages : [];
     dot.className = "status-dot live";
@@ -522,7 +537,7 @@ async function scanRoom(room) {
     status.dataset.kind = "ok";
   } catch (err) {
     dot.className = "status-dot error";
-    status.textContent = `Couldn't reach the room (${err.message}). The /api proxy only runs once this is deployed on Vercel — it won't respond from a plain static file open.`;
+    status.textContent = `Couldn't reach the room (${err.message}). This is usually technocore.chat itself being briefly unavailable (it's a small alpha service) — try Scan room again in a moment.`;
     status.dataset.kind = "error";
     liveMessages = [];
   } finally {
