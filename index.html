@@ -194,12 +194,13 @@
           <p class="agent-copy-text">
             Reads and posts to the real <code>technocore.chat</code> network through a small
             server-side proxy (browsers can't call it directly — CORS). Offer frames use the
-            fields documented in <code>flop-labs/tclk</code>. Accept frames are this app's
-            best-effort reply — <b>flop-labs hasn't published the exact accept/lock/reveal wire
-            schema</b>, so another agent isn't guaranteed to recognize it. Rails are declared as
-            <code>paperrail</code> — nothing posted here is backed by real value, since no
-            value-bearing rail exists yet (the protocol's own alpha status). Public offers
-            conventionally live in the <code>tclk-offers</code> room.
+            fields documented in <code>flop-labs/tclk</code>. Accept/lock/reveal/refund frames are
+            this app's best-effort replies — <b>flop-labs hasn't published the exact wire schema
+            for those</b>, so another agent isn't guaranteed to recognize them. Every frame posted
+            here declares <code>rails: ["paperrail"]</code> and says so in a <code>note</code>
+            field — nothing posted here is backed by real value, since no value-bearing rail
+            exists yet (the protocol's own alpha status, not a limitation of this tool). Public
+            offers conventionally live in the <code>tclk-offers</code> room.
           </p>
         </div>
       </section>
@@ -223,6 +224,15 @@
           <span id="live-offer-count">0</span>
         </div>
         <div class="feed" id="live-offers"></div>
+      </section>
+
+      <section class="feed-card">
+        <div class="feed-meta">
+          <span>My offers</span>
+          <span class="meta-sep">·</span>
+          <span id="my-offer-count">0</span>
+        </div>
+        <div class="feed" id="my-offers"></div>
       </section>
 
       <section class="feed-card">

@@ -595,6 +595,37 @@ function saveAccepted() {
 
 let acceptedOffers = loadAccepted();
 
+const MY_OFFERS_STORAGE_KEY = "tclk_sandbox_my_offers_v1";
+
+function loadMyOffers() {
+  try {
+    const raw = localStorage.getItem(MY_OFFERS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveMyOffers() {
+  localStorage.setItem(MY_OFFERS_STORAGE_KEY, JSON.stringify(myOffers));
+}
+
+let myOffers = loadMyOffers();
+
+// Looks for a verified (signed) tclk1 frame of `type` referencing `ref` in
+// the room we most recently scanned. Optionally require a specific sender.
+// This is how we detect "someone accepted my offer" / "the payer locked".
+function findFrameByType(type, ref, fromDid) {
+  for (const msg of liveMessages) {
+    const frame = parseTclkFrame(msg.text);
+    if (!frame || frame.type !== type || String(frame.ref) !== String(ref)) continue;
+    if (fromDid && frame.from !== fromDid) continue;
+    if (!shortId(msg.from).verified) continue;
+    return { frame, msg };
+  }
+  return null;
+}
+
 function renderAcceptedOffers() {
   const panel = document.getElementById("accepted-offers");
   document.getElementById("accepted-count").textContent = String(acceptedOffers.length);
@@ -605,8 +636,24 @@ function renderAcceptedOffers() {
   }
 
   panel.innerHTML = acceptedOffers
-    .map(
-      (a) => `
+    .map((a, i) => {
+      const inRoom = a.room === liveRoom;
+      const lockHit = a.status !== "revealed" && inRoom ? findFrameByType("lock", a.ref, a.from) : null;
+
+      let statusLine;
+      let actionHtml = "";
+      if (a.status === "revealed") {
+        statusLine = `<span class="status-ok">Revealed — claim posted.</span>`;
+      } else if (lockHit) {
+        statusLine = `<span class="status-ready">Payer locked — ready to reveal.</span>`;
+        actionHtml = `<button class="btn btn-primary reveal-btn" data-i="${i}">Reveal &amp; claim (post to room)</button>`;
+      } else if (inRoom) {
+        statusLine = `<span class="status-wait">Waiting for the payer to lock…</span>`;
+      } else {
+        statusLine = `<span class="status-wait">Scan /r/${escapeHtml(a.room)} to check for a lock.</span>`;
+      }
+
+      return `
         <div class="accepted-row">
           <div class="accepted-main">
             <span class="offer-amount">${escapeHtml(formatAmount(a.amount))} ${escapeHtml(String(a.asset ?? ""))}</span>
@@ -621,14 +668,169 @@ function renderAcceptedOffers() {
             <span class="offer-field"><b>ref</b>=${escapeHtml(shortHex(a.ref, 8))}</span>
             <span class="offer-field"><b>statement</b>=${escapeHtml(shortHex(a.statement, 8))}</span>
           </div>
-        </div>`
-    )
+          <div class="row-status">${statusLine}</div>
+          ${actionHtml}
+        </div>`;
+    })
     .join("");
+
+  panel.querySelectorAll(".reveal-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const a = acceptedOffers[Number(btn.dataset.i)];
+      if (!a) return;
+      const record = window.TechnocoreIdentity.load();
+      if (!record) return;
+
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = "Signing…";
+      try {
+        const frame = {
+          type: "reveal",
+          from: record.did,
+          ref: a.ref,
+          statement: a.statement,
+          preimage: a.preimage,
+          note: "posted via tclk-sandbox — best-effort reveal frame, exact wire schema isn't published by flop-labs",
+        };
+        await postSigned(a.room, `tclk1 ${JSON.stringify(frame)}`);
+        a.status = "revealed";
+        saveAccepted();
+        renderAcceptedOffers();
+        showToast(`Posted a real reveal frame to /r/${a.room}.`);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = original;
+        showToast(`Couldn't reveal: ${err.message}`);
+      }
+    });
+  });
+}
+
+function renderMyOffers() {
+  const panel = document.getElementById("my-offers");
+  document.getElementById("my-offer-count").textContent = String(myOffers.length);
+
+  if (myOffers.length === 0) {
+    panel.innerHTML = `<div class="feed-empty">Offers you post will show up here.</div>`;
+    return;
+  }
+
+  panel.innerHTML = myOffers
+    .map((o, i) => {
+      const inRoom = o.room === liveRoom;
+      const revealHit = inRoom ? findFrameByType("reveal", o.nonce) : null;
+      const acceptHit = inRoom && o.status === "open" ? findFrameByType("accept", o.nonce) : null;
+
+      let statusLine;
+      let actionHtml = "";
+
+      if (revealHit) {
+        statusLine = `<span class="status-ok">Claimed — payee revealed the secret.</span>`;
+      } else if (o.status === "refunded") {
+        statusLine = `<span class="status-ok">Refunded.</span>`;
+      } else if (o.status === "locked") {
+        const canRefund = Date.now() >= o.refundAfterMs;
+        if (canRefund) {
+          statusLine = `<span class="status-ready">Locked. Refund window is open.</span>`;
+          actionHtml = `<button class="btn btn-danger refund-btn" data-i="${i}">Refund (post to room)</button>`;
+        } else {
+          statusLine = `<span class="status-wait">Locked — waiting for reveal or ${new Date(o.refundAfterMs).toLocaleTimeString()} to refund.</span>`;
+        }
+      } else if (acceptHit) {
+        statusLine = `<span class="status-ready">Accepted by <b>${escapeHtml(shortId(acceptHit.msg.from).label)}</b> — ready to lock.</span>`;
+        actionHtml = `<button class="btn btn-primary lock-btn" data-i="${i}">Lock (post to room)</button>`;
+      } else if (inRoom) {
+        statusLine = `<span class="status-wait">No accept seen yet in this room.</span>`;
+      } else {
+        statusLine = `<span class="status-wait">Posted to /r/${escapeHtml(o.room)} — scan that room to check for accepts.</span>`;
+      }
+
+      return `
+        <div class="accepted-row">
+          <div class="accepted-main">
+            <span class="offer-amount">${escapeHtml(formatAmount(o.amount))} ${escapeHtml(String(o.asset ?? ""))}</span>
+            <span class="offer-job">${escapeHtml(o.job || "escrow offer")}</span>
+          </div>
+          <div class="accepted-meta">
+            <span>in /r/${escapeHtml(o.room)}</span>
+            <span>${formatTime(o.postedAt)}</span>
+          </div>
+          <div class="offer-fields">
+            <span class="offer-field"><b>nonce</b>=${escapeHtml(shortHex(o.nonce, 8))}</span>
+          </div>
+          <div class="row-status">${statusLine}</div>
+          ${actionHtml}
+        </div>`;
+    })
+    .join("");
+
+  panel.querySelectorAll(".lock-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const o = myOffers[Number(btn.dataset.i)];
+      if (!o) return;
+      const record = window.TechnocoreIdentity.load();
+      if (!record) return;
+
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = "Signing…";
+      try {
+        const frame = {
+          type: "lock",
+          from: record.did,
+          ref: o.nonce,
+          rails: ["paperrail"],
+          note: "posted via tclk-sandbox — no real value-bearing rail exists yet, this locks nothing real",
+        };
+        await postSigned(o.room, `tclk1 ${JSON.stringify(frame)}`);
+        o.status = "locked";
+        saveMyOffers();
+        renderMyOffers();
+        showToast(`Posted a real lock frame to /r/${o.room}.`);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = original;
+        showToast(`Couldn't lock: ${err.message}`);
+      }
+    });
+  });
+
+  panel.querySelectorAll(".refund-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const o = myOffers[Number(btn.dataset.i)];
+      if (!o) return;
+      const record = window.TechnocoreIdentity.load();
+      if (!record) return;
+
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = "Signing…";
+      try {
+        const frame = {
+          type: "refund",
+          from: record.did,
+          ref: o.nonce,
+          note: "posted via tclk-sandbox — no real value-bearing rail exists yet, this refunds nothing real",
+        };
+        await postSigned(o.room, `tclk1 ${JSON.stringify(frame)}`);
+        o.status = "refunded";
+        saveMyOffers();
+        renderMyOffers();
+        showToast(`Posted a real refund frame to /r/${o.room}.`);
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = original;
+        showToast(`Couldn't refund: ${err.message}`);
+      }
+    });
+  });
 }
 
 function renderLive() {
   renderLiveFeed();
   renderLiveOffers();
+  renderMyOffers();
   renderAcceptedOffers();
   tickLiveCountdowns();
 }
@@ -787,7 +989,7 @@ function renderLiveOffers() {
       const original = btn.textContent;
       btn.textContent = "Signing…";
       try {
-        const { hash } = await generateHashLock();
+        const { preimage, hash } = await generateHashLock();
         const frame = {
           type: "accept",
           from: record2.did,
@@ -808,6 +1010,8 @@ function renderLiveOffers() {
           job: btn.dataset.acceptJob,
           from: btn.dataset.acceptFrom,
           statement: hash,
+          preimage,
+          status: "accepted",
           acceptedAt: Date.now(),
         });
         saveAccepted();
@@ -992,6 +1196,21 @@ document.getElementById("live-offer-form").addEventListener("submit", async (e) 
     status.textContent = `Posted a real offer to /r/${room}. Scan the room to see it appear.`;
     status.dataset.kind = "ok";
     document.getElementById("lo-desc").value = "";
+
+    myOffers.unshift({
+      nonce: frame.nonce,
+      room,
+      amount,
+      asset,
+      job: desc || "escrow offer",
+      claimByMs: frame.claimByMs,
+      refundAfterMs: frame.refundAfterMs,
+      expiresMs: frame.expiresMs,
+      status: "open",
+      postedAt: Date.now(),
+    });
+    saveMyOffers();
+    renderMyOffers();
   } catch (err) {
     status.textContent = `Couldn't post: ${err.message}`;
     status.dataset.kind = "error";
@@ -1048,3 +1267,4 @@ setInterval(() => {
 }, 1000);
 render();
 renderAcceptedOffers();
+renderMyOffers();

@@ -17,9 +17,16 @@ Two tabs, switchable from the top bar:
     convention room for public offers) and picks out genuine, signed
     `tclk1 offer` frames.
   - **Send a real offer** — signs and posts a real `tclk1 offer` frame to
-    the room of your choice.
-  - **Accept** — for someone else's offer, posts a signed reply frame back
-    into the room.
+    the room of your choice. Tracked in **My offers**.
+  - **My offers** — offers you've posted. Once a scan of that room turns up
+    someone else's signed `accept` reply, a **Lock** button appears; once
+    locked, a **Refund** button appears after the refund window opens (as
+    long as no reveal has shown up in the meantime).
+  - **Accept** — for someone else's offer, posts a signed `accept` reply.
+    Tracked in **Accepted by me**.
+  - **Accepted by me** — offers you've accepted. Once a scan of that room
+    turns up the payer's signed `lock`, a **Reveal & claim** button appears
+    to post your secret back to the room.
 
 State for the Sandbox tab is saved to your browser's `localStorage`. The
 Live tab's identity (its private key) is saved the same way, locally.
@@ -81,17 +88,20 @@ both the static files and the `/api` functions locally.
   `nonce`). They declare `rails: ["paperrail"]` — nothing posted here is
   backed by real value, because no value-bearing rail exists yet (that's
   the protocol's own alpha status, not a limitation of this tool).
-- **Accept frames are this app's best-effort interpretation.** flop-labs
-  has published the offer-creation shape but not the exact accept/lock/
-  reveal wire schema, so an accept frame posted from here (`type:
-  "accept"`, `ref: <offer's nonce>`, `statement: <sha256 hex>`) is a
-  reasonable guess, not a confirmed spec — another agent isn't guaranteed
-  to parse it. The reply is signed and genuinely posted to the room either
-  way; treat it as a real signal, not a guaranteed-compatible protocol
-  step. Lock/reveal/refund against the live network are intentionally not
-  implemented — with no real rail to back a lock, doing that would just
-  create the appearance of a funded commitment where none exists. Use the
-  Sandbox tab to rehearse that full lifecycle safely.
+- **Accept, lock, reveal, and refund frames are this app's best-effort
+  interpretation.** flop-labs has published the offer-creation shape but
+  not the exact wire schema for the rest of the lifecycle, so what's sent
+  here (`type: "accept"/"lock"/"reveal"/"refund"`, linked by `ref: <offer's
+  nonce>`) is a reasonable guess, not a confirmed spec — another agent
+  isn't guaranteed to parse it. Every one of these frames also declares
+  its own fakeness in a `note` field (locks say "no real funds locked",
+  etc.), specifically so nothing posted from here can be mistaken for a
+  real funded commitment by anyone reading the raw room feed. The replies
+  are signed and genuinely posted either way — treat them as real
+  signals, not guaranteed-compatible protocol steps. This app also can't
+  see when the *other* party performs their half (a payer locking, a
+  payee revealing) unless you re-scan the room they posted to — there's
+  no push notification, only polling by hand via "Scan room".
 - Per the protocol's own trust model, an **unsigned** `tclk1` frame is
   data, not a commitment (anyone can type one), so the app flags any offer
   that didn't come from a verified `did:key` writer, and only offers
